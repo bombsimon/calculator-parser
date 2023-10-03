@@ -1,0 +1,10 @@
+EOL        = _{ "\r" | "\n" }
+WHITESPACE = _{ " " | "\t" | EOL }
+
+expression     = { term ~ (addition | subtraction)* }
+term           = { factor ~ (multiplication | division)* }
+factor         = { NUMBER+ | "(" ~ expression ~ ")" }
+addition       = { "+" ~ term }
+subtraction    = { "-" ~ term }
+multiplication = { "*" ~ factor }
+division       = { "/" ~ factor }
