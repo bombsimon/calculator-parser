@@ -1,10 +1,20 @@
-EOL        = _{ "\r" | "\n" }
-WHITESPACE = _{ " " | "\t" | EOL }
+integer = @{ ASCII_DIGIT+ }
+number  = @{ integer ~ ("." ~ integer?)? }
 
-expression     = { term ~ (addition | subtraction)* }
-term           = { factor ~ (multiplication | division)* }
-factor         = { NUMBER+ | "(" ~ expression ~ ")" }
-addition       = { "+" ~ term }
-subtraction    = { "-" ~ term }
-multiplication = { "*" ~ factor }
-division       = { "/" ~ factor }
+unary_minus = { "-" }
+primary     = _{ number | "(" ~ expr ~ ")" }
+atom        = _{ unary_minus? ~ primary }
+
+bin_op   = _{ add | subtract | multiply | divide | modulo | pow }
+add      = { "+" }
+subtract = { "-" }
+multiply = { "*" }
+divide   = { "/" }
+modulo   = { "%" }
+pow      = { "^" }
+
+expr = { atom ~ (bin_op ~ atom)* }
+
+equation = _{ SOI ~ expr ~ EOI }
+
+WHITESPACE = _{ " " }
