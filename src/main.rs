@@ -1,7 +1,9 @@
 use pest::iterators::Pairs;
 use pest::pratt_parser::PrattParser;
 use pest::Parser;
-use std::io::{self, BufRead};
+use rustyline::error::ReadlineError;
+use rustyline::DefaultEditor;
+use std::io;
 
 #[derive(pest_derive::Parser)]
 #[grammar = "calculator.pest"]
@@ -31,10 +33,24 @@ pub enum Op {
     Pow,
 }
 
+impl std::fmt::Display for Op {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            Op::Add => write!(f, "+"),
+            Op::Subtract => write!(f, "-"),
+            Op::Multiply => write!(f, "×"),
+            Op::Divide => write!(f, "÷"),
+            Op::Modulo => write!(f, "%"),
+            Op::Pow => write!(f, "^"),
+        }
+    }
+}
+
 #[derive(Debug)]
 pub enum Expr {
     Number(f64),
     UnaryMinus(Box<Expr>),
+    Grouped(Box<Expr>),
     BinOp {
         lhs: Box<Expr>,
         op: Op,
@@ -47,6 +63,7 @@ impl Expr {
         match self {
             Self::Number(i) => *i,
             Self::UnaryMinus(expr) => -(expr.eval()),
+            Self::Grouped(expr) => expr.eval(),
             Self::BinOp { lhs, op, rhs } => {
                 let lhs = lhs.eval();
                 let rhs = rhs.eval();
@@ -64,11 +81,24 @@ impl Expr {
     }
 }
 
+impl std::string::ToString for Expr {
+    fn to_string(&self) -> String {
+        match self {
+            Self::Number(i) => i.to_string(),
+            Self::UnaryMinus(expr) => format!("-{}", expr.to_string()),
+            Self::Grouped(expr) => format!("({})", expr.to_string()),
+            Self::BinOp { lhs, op, rhs } => {
+                format!("{} {} {}", lhs.to_string(), op, rhs.to_string())
+            }
+        }
+    }
+}
+
 pub fn parse_expr(pairs: Pairs<Rule>) -> Expr {
     PRATT_PARSER
         .map_primary(|primary| match primary.as_rule() {
             Rule::number => Expr::Number(primary.as_str().parse::<f64>().unwrap()),
-            Rule::expr => parse_expr(primary.into_inner()),
+            Rule::expr => Expr::Grouped(Box::new(parse_expr(primary.into_inner()))),
             rule => unreachable!("Expr::parse expected atom, found {:?}", rule),
         })
         .map_infix(|lhs, op, rhs| {
@@ -96,15 +126,41 @@ pub fn parse_expr(pairs: Pairs<Rule>) -> Expr {
 }
 
 fn main() -> io::Result<()> {
-    for line in io::stdin().lock().lines() {
-        match CalculatorParser::parse(Rule::equation, &line?) {
-            Ok(mut pairs) => {
-                let expr = parse_expr(pairs.next().unwrap().into_inner());
-                println!("Parsed: {:#?}", expr);
-                println!("Evaluated: {}", expr.eval());
+    let mut rl = DefaultEditor::new().unwrap();
+
+    loop {
+        let readline = rl.readline("› ");
+        match readline {
+            Ok(line) => {
+                if line == "?" {
+                    for (i, h) in rl.history().iter().enumerate() {
+                        println!("{:<3} {}", i + 1, h);
+                        if i >= 9 {
+                            break;
+                        }
+                    }
+
+                    continue;
+                }
+
+                rl.add_history_entry(line.as_str()).unwrap();
+
+                match CalculatorParser::parse(Rule::equation, &line) {
+                    Ok(mut pairs) => {
+                        let expr = parse_expr(pairs.next().unwrap().into_inner());
+                        println!("Parsed: {:#?}\n", expr);
+                        println!("{} = {}", expr.to_string(), expr.eval());
+                    }
+                    Err(e) => {
+                        eprintln!("Parse failed: {:?}", e);
+                    }
+                }
             }
-            Err(e) => {
-                eprintln!("Parse failed: {:?}", e);
+            Err(ReadlineError::Interrupted) | Err(ReadlineError::Eof) => {
+                break;
+            }
+            Err(err) => {
+                eprintln!("Error: {:?}", err);
             }
         }
     }
